@@ -162,4 +162,5 @@ cython_debug/
 #.idea/
 
 .download
-.list_url
+.list_url*
+.DS_Store
