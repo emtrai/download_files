@@ -32,6 +32,9 @@ import ssl
 import threading
 from tqdm import tqdm
 import multiprocessing
+from socket import timeout
+from urllib.error import HTTPError, URLError
+import socket
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,17 @@ NUMBER_CORES = multiprocessing.cpu_count()
 DEFAULT_JOBS = NUMBER_CORES/2 if NUMBER_CORES > 1 else 1
 
 LOG_FILE=None
+DEFAULT_TIMEOUT = (2*60) # 60s
 
+ERR_NONE = 0 
+ERR_EXISTED = 1
+ERR_CONNECT_ERR = 2
+
+ERR_TO_MSG = {
+    ERR_NONE: "OK",
+    ERR_EXISTED: "Existed",
+    ERR_CONNECT_ERR: "Connection err",
+}
 class UrlItem(object):
     _url = None
     _fname = None
@@ -128,7 +141,18 @@ class DownloadProgressBar():
                 self.update(block_size)
             else:
                 self.end()
-            
+
+class AppConfig:
+    outdir = None
+    skip_dup = False
+    timeout = 0
+
+def err_msg(err):
+    errmsg = "Unknown"
+    if err in ERR_TO_MSG:
+        errmsg = ERR_TO_MSG[err]
+    return errmsg
+
 def append_log(log_msg):
     global LOG_FILE
     if log_msg is not None and len(log_msg) > 0:
@@ -142,43 +166,63 @@ def normalize_fname(fname):
     fname = unquote(fname)
     return fname
 
-def get_fpath(outdir, fname):
+def get_non_exist_fpath(outdir, fname, skip_dup):
     fpath = None
     suffix = None
+    global ERR_NONE
+    global ERR_EXISTED
+    ret = ERR_NONE
     for i in range(100):
-        fpath = os.path.join(outdir, fname)
+        path = os.path.join(outdir, fname)
         # Try to find suitable file name, if it exists, add "(number)"
-        if (os.path.exists(fpath)):
-            parts = os.path.splitext(fpath)
-            fname_no_ex = parts[0]
-            if suffix is not None and parts[0].endswith(suffix):
-               fname_no_ex = fname_no_ex[:len(fname_no_ex) - len(suffix)]
-            suffix = "(%s)" % i
-            fname = "%s%s%s" % (fname_no_ex, suffix, parts[1])
+        if (os.path.exists(path)):
+            if (skip_dup):
+                ret = ERR_EXISTED
+                fpath = None
+                break
+            else:
+                parts = os.path.splitext(path)
+                fname_no_ex = parts[0]
+                if suffix is not None and parts[0].endswith(suffix):
+                    fname_no_ex = fname_no_ex[:len(fname_no_ex) - len(suffix)]
+                suffix = "(%s)" % i
+                fname = "%s%s%s" % (fname_no_ex, suffix, parts[1])
         else:
+            fpath = path
             break
-    return fpath
+    return fpath,ret
 
-def download_file(title, url, fpath, bar):
+def download_file(title, url, fpath, bar, app_cfg):
     '''
     Download file
     '''
+    global ERR_NONE
+    global ERR_EXISTED
+    ret = ERR_NONE
     # TODO: Download multi parts of file
     bar.set_title(title)
-    urllib.request.urlretrieve(url, fpath, bar)
+    socket.setdefaulttimeout(app_cfg.timeout)
+    try:
+        urllib.request.urlretrieve(url, fpath, bar)
+    except Exception as e:
+        logger.err(("Exception when download file form url '%s'\n" % url) + str(e))
+        ret = ERR_CONNECT_ERR
+    return ret
+        
 
-def download_thread(thread_id, lock, outdir, bar):
+def download_thread(thread_id, lock, app_cfg, bar):
     '''
     Download thread
     
     @param lock: synchornize lock
-    @param outdir: directory to store download file    
+    @param app_cfg: App configuration
     @param bar: Progress bar
     '''
     global NEXT_URL_IDX
     global LIST_URLS
     global TOTAL_URLS
     global TOTAL_DOWNLOADED
+    global ERR_NONE
     
     
     while True:
@@ -195,22 +239,25 @@ def download_thread(thread_id, lock, outdir, bar):
             break
         
         
-        fpath = get_fpath(outdir, url_item.fname)
+        fpath, err = get_non_exist_fpath(app_cfg.outdir, url_item.fname, app_cfg.skip_dup)
         log_msg = None
         
         # download file
-        if (fpath is not None):
+        if (fpath is not None and err == ERR_NONE):
             file_name = os.path.basename(fpath)
-            download_file("[%d] %s" % (thread_id, file_name), url_item.url, fpath, bar)
+            err = download_file("[%d] %s" % (thread_id, file_name), url_item.url, fpath, bar, app_cfg)
             lock.acquire()
-            TOTAL_DOWNLOADED += 1 
-            log_msg = "[%d] Done: %s" % (TOTAL_DOWNLOADED, str(url_item))
+            TOTAL_DOWNLOADED += 1
+            if (err == ERR_NONE):
+                log_msg = "[%d] Done : %s" % (TOTAL_DOWNLOADED, str(url_item))
+            else:
+                log_msg = "[%d] Error : %s : %s" % (TOTAL_DOWNLOADED, err_msg(err), str(url_item))
             lock.release()
         else:
-            logger.error("FAILED to get file path for URL '%s', file name '%s'" % (url_item.url, url_item.fname))
+            # logger.error("FAILED to get file path for URL '%s', file name '%s'" % (url_item.url, url_item.fname))
             lock.acquire()
             TOTAL_DOWNLOADED += 1 
-            log_msg = "[%d] Error: %s" % (TOTAL_DOWNLOADED, str(url_item))
+            log_msg = "[%d] Error : %s : %s" % (TOTAL_DOWNLOADED, err_msg(err), str(url_item))
             lock.release()
 
         append_log(log_msg)
@@ -248,7 +295,6 @@ def get_urls_from_file(fpath):
     return urls
 
 def main(args):
-    logger.info("Output dir '%s'" % args.outdir)
     if args.untrusted:
         ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -294,6 +340,7 @@ def main(args):
         os.makedirs(outdir)
       
 
+    logger.info("Output dir '%s'" % args.outdir)
     LOG_FILE=os.path.join(outdir, LOG_FNAME)
     logger.debug("List of url: \n" + "\n".join(str(url) for url in LIST_URLS))
     
@@ -311,10 +358,15 @@ def main(args):
     run_threads = []
 
     logger.info("Create %d job(s) to download" % num_jobs)
+    
+    app_cfg = AppConfig()
+    app_cfg.outdir = outdir
+    app_cfg.skip_dup = args.skipdup
+    app_cfg.timeout = args.timeout
 
     # Create thread to download
     for job in range(num_jobs):
-        run_thread = threading.Thread(target=download_thread, args=(job, lock,outdir, DownloadProgressBar(job))) 
+        run_thread = threading.Thread(target=download_thread, args=(job, lock, app_cfg, DownloadProgressBar(job))) 
         run_threads.append(run_thread)
         run_thread.start()
     
@@ -345,6 +397,12 @@ if __name__ == '__main__':
     
     parser.add_argument('--untrusted', action='store_true', default=False,
                         help='By-pass untrusted URL (skip SSL failure)')
+    
+    parser.add_argument('--skipdup', action='store_true', default=False,
+                        help='Skip duplicate file or not')
+    
+    parser.add_argument('--timeout', action='store', type=int, default=DEFAULT_TIMEOUT,
+                        help="Timeout connection in second, default %d" % DEFAULT_TIMEOUT)
 
     args = parser.parse_args()
     
