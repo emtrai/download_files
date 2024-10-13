@@ -252,17 +252,12 @@ def main(args):
     if args.untrusted:
         ssl._create_default_https_context = ssl._create_unverified_context
 
-    if not os.path.exists(args.outdir):
-        logger.info("Create output dir '%s'" % args.outdir)
-        os.makedirs(args.outdir)
-      
     
     global LIST_URLS
     global NEXT_URL_IDX
     global TOTAL_URLS
     global LOG_FILE
     
-    LOG_FILE=os.path.join(args.outdir, LOG_FNAME)
     
     NEXT_URL_IDX = 0
     LIST_URLS = []
@@ -287,6 +282,19 @@ def main(args):
         else:
             raise Exception("File '%s' does not exist" % args.fileurl)
     
+    outdir = args.outdir
+    if (outdir is None):
+        outdir = DEFAULT_OUT_DIR
+        if args.fileurl is not None:
+            fname = os.path.basename(args.fileurl)
+            outdir = os.path.join(outdir, fname)
+
+    if not os.path.exists(outdir):
+        logger.info("Create output dir '%s'" % outdir)
+        os.makedirs(outdir)
+      
+
+    LOG_FILE=os.path.join(outdir, LOG_FNAME)
     logger.debug("List of url: \n" + "\n".join(str(url) for url in LIST_URLS))
     
     TOTAL_URLS = len(LIST_URLS)
@@ -306,7 +314,7 @@ def main(args):
 
     # Create thread to download
     for job in range(num_jobs):
-        run_thread = threading.Thread(target=download_thread, args=(job, lock,args.outdir, DownloadProgressBar(job))) 
+        run_thread = threading.Thread(target=download_thread, args=(job, lock,outdir, DownloadProgressBar(job))) 
         run_threads.append(run_thread)
         run_thread.start()
     
@@ -314,6 +322,7 @@ def main(args):
     for t in run_threads:
         t.join()
 
+    print("\nALL DONE\n")
 
 if __name__ == '__main__':
     import argparse
@@ -326,7 +335,6 @@ if __name__ == '__main__':
                         help='File contains list of url to be download')
     
     parser.add_argument('--outdir', action='store',
-                        default=DEFAULT_OUT_DIR,
                         help="Output directory, default '%s'" % DEFAULT_OUT_DIR)
     
     parser.add_argument('--url', action='store',
