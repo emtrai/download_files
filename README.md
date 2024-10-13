@@ -19,7 +19,8 @@ python3 with following package installed
 
 ```
 usage: Download file [-h] [--fileurl FILEURL] [--outdir OUTDIR] [--url URL]
-                     [-j JOB] [--untrusted]
+                     [-j JOB] [--untrusted] [--skipdup] [--timeout TIMEOUT]
+                     [--retry RETRY]
 
 Download multiple files in seperated threads/tasks
 
@@ -33,6 +34,9 @@ optional arguments:
   -j JOB, --job JOB  The number of jobs/threads to download. Default is a haft
                      of CPU cores, i.e. 2
   --untrusted        By-pass untrusted URL (skip SSL failure)
+  --skipdup          Skip duplicate file or not
+  --timeout TIMEOUT  Timeout connection in second, default 120
+  --retry RETRY      Retry count, default 2
 
 Copyright @ 2024 Ngo Huy Anh
 ```

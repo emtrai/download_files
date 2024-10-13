@@ -67,6 +67,8 @@ ERR_TO_MSG = {
     ERR_EXISTED: "Existed",
     ERR_CONNECT_ERR: "Connection err",
 }
+
+DEFAULT_RETRY = 2
 class UrlItem(object):
     _url = None
     _fname = None
@@ -146,6 +148,7 @@ class AppConfig:
     outdir = None
     skip_dup = False
     timeout = 0
+    retry_cnt = DEFAULT_RETRY
 
 def err_msg(err):
     errmsg = "Unknown"
@@ -202,11 +205,14 @@ def download_file(title, url, fpath, bar, app_cfg):
     # TODO: Download multi parts of file
     bar.set_title(title)
     socket.setdefaulttimeout(app_cfg.timeout)
-    try:
-        urllib.request.urlretrieve(url, fpath, bar)
-    except Exception as e:
-        logger.err(("Exception when download file form url '%s'\n" % url) + str(e))
-        ret = ERR_CONNECT_ERR
+    for retry in range(app_cfg.retry_cnt):
+        try:
+            urllib.request.urlretrieve(url, fpath, bar)
+            ret = ERR_NONE
+            break
+        except Exception as e:
+            logger.error(("Exception when download file from url '%s', tried %d/%d\n" % (url, retry, app_cfg.retry_cnt)) + str(e))
+            ret = ERR_CONNECT_ERR
     return ret
         
 
@@ -363,6 +369,9 @@ def main(args):
     app_cfg.outdir = outdir
     app_cfg.skip_dup = args.skipdup
     app_cfg.timeout = args.timeout
+    app_cfg.retry_cnt = args.retry
+    if (app_cfg.retry_cnt <= 0):
+        app_cfg.retry_cnt = 1
 
     # Create thread to download
     for job in range(num_jobs):
@@ -403,6 +412,10 @@ if __name__ == '__main__':
     
     parser.add_argument('--timeout', action='store', type=int, default=DEFAULT_TIMEOUT,
                         help="Timeout connection in second, default %d" % DEFAULT_TIMEOUT)
+    
+    
+    parser.add_argument('--retry', action='store', type=int, default=DEFAULT_RETRY,
+                        help="Retry count, default %d" % DEFAULT_RETRY)
 
     args = parser.parse_args()
     
