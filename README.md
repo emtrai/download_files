@@ -39,10 +39,16 @@ Copyright @ 2024 Ngo Huy Anh
 
 # EXAMPLE
 
+Download URLs from argument
+
 ```
 ./download_file.py --untrusted --url https://raw.githubusercontent.com/emtrai/download_files/refs/heads/main/README.md,https://raw.githubusercontent.com/emtrai/download_files/refs/heads/main/download_file.py
 ```
 
+Download URLs from file
+```
+./download_file.py --fileurl list_url --untrusted -j 10
+```
 
 # TODO
 
