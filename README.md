@@ -10,12 +10,12 @@ https://github.com/verigak/progress/blob/master/test_progress.py
 
 > **_NOTE:_**  For Chrome user, use [Link Grabber extension](https://chromewebstore.google.com/detail/link-grabber/caodelkhipncidmoebgbbeemedohcdma) to get multiple download links of a webpage
 
-# REQUIREMENT
+## REQUIREMENT
 
 python3 with following package installed
 - tqdm
 
-# USAGE
+## USAGE
 
 ```
 usage: Download file [-h] [--fileurl FILEURL] [--outdir OUTDIR] [--url URL]
@@ -41,7 +41,7 @@ optional arguments:
 Copyright @ 2024 Ngo Huy Anh
 ```
 
-# EXAMPLE
+## EXAMPLE
 
 Download URLs from argument
 
@@ -54,24 +54,23 @@ Download URLs from file
 ./download_file.py --fileurl list_url --untrusted -j 10
 ```
 
-# TODO
+## TODO
 
 - Download file in multi parts
 - Parse webpage to get download links and download
 - Download over proxy
 - Re-direct download link
 
-
-# COPYRIGHT
-
-Copyright (C) 2024, Ngo Huy Anh
-
-# LICENSE 
+## LICENSE 
 
 Apache License
 Version 2.0, January 2004
 http://www.apache.org/licenses/
 
-# CONTACT
+## COPYRIGHT
+
+Copyright (C) 2024, Ngo Huy Anh
+
+## CONTACT
 
 Ngo Huy Anh, ngohuyanh@gmail.com, emtrai@gmail.com
