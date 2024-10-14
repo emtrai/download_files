@@ -58,6 +58,8 @@ Download URLs from file
 
 - Download file in multi parts
 - Parse webpage to get download links and download
+- Download over proxy
+- Re-direct download link
 
 
 # COPYRIGHT

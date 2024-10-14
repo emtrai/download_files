@@ -44,7 +44,7 @@ DEFAULT_OUT_DIR=os.path.join(CUR_DIR, ".download")
 
 COMMENT_CHAR="#"
 
-LOG_FNAME="download.log"
+LOG_FNAME=".download.log"
 
 URL_SPLIT=","
     
@@ -61,14 +61,16 @@ DEFAULT_TIMEOUT = (2*60) # 60s
 ERR_NONE = 0 
 ERR_EXISTED = 1
 ERR_CONNECT_ERR = 2
+ERR_NOT_FOUND = 3
 
 ERR_TO_MSG = {
     ERR_NONE: "OK",
     ERR_EXISTED: "Existed",
     ERR_CONNECT_ERR: "Connection err",
+    ERR_NOT_FOUND: "Not found",
 }
 
-DEFAULT_RETRY = 2
+DEFAULT_RETRY = 3
 class UrlItem(object):
     _url = None
     _fname = None
@@ -171,6 +173,7 @@ def normalize_fname(fname):
 
 def get_non_exist_fpath(outdir, fname, skip_dup):
     fpath = None
+    fpath_tmp = None
     suffix = None
     global ERR_NONE
     global ERR_EXISTED
@@ -192,8 +195,9 @@ def get_non_exist_fpath(outdir, fname, skip_dup):
                 fname = "%s%s%s" % (fname_no_ex, suffix, parts[1])
         else:
             fpath = path
+            fpath_tmp = path = os.path.join(outdir, ".%s" % fname)
             break
-    return fpath,ret
+    return fpath,fpath_tmp,ret
 
 def download_file(title, url, fpath, bar, app_cfg):
     '''
@@ -201,18 +205,24 @@ def download_file(title, url, fpath, bar, app_cfg):
     '''
     global ERR_NONE
     global ERR_EXISTED
+    global ERR_NOT_FOUND
     ret = ERR_NONE
     # TODO: Download multi parts of file
-    bar.set_title(title)
-    socket.setdefaulttimeout(app_cfg.timeout)
     for retry in range(app_cfg.retry_cnt):
         try:
+            bar.set_title(title)
+            socket.setdefaulttimeout(app_cfg.timeout)
             urllib.request.urlretrieve(url, fpath, bar)
             ret = ERR_NONE
             break
         except Exception as e:
+            bar.end()
             logger.error(("Exception when download file from url '%s', tried %d/%d\n" % (url, retry, app_cfg.retry_cnt)) + str(e))
+            if (os.path.exists(fpath)):
+                os.remove(fpath)
             ret = ERR_CONNECT_ERR
+    if (ret == ERR_NONE) and not os.path.exists(fpath):
+        ret = ERR_NOT_FOUND
     return ret
         
 
@@ -229,8 +239,7 @@ def download_thread(thread_id, lock, app_cfg, bar):
     global TOTAL_URLS
     global TOTAL_DOWNLOADED
     global ERR_NONE
-    
-    
+
     while True:
         url_item = None
         
@@ -245,13 +254,13 @@ def download_thread(thread_id, lock, app_cfg, bar):
             break
         
         
-        fpath, err = get_non_exist_fpath(app_cfg.outdir, url_item.fname, app_cfg.skip_dup)
+        fpath, tmp_fpath, err = get_non_exist_fpath(app_cfg.outdir, url_item.fname, app_cfg.skip_dup)
         log_msg = None
         
         # download file
         if (fpath is not None and err == ERR_NONE):
             file_name = os.path.basename(fpath)
-            err = download_file("[%d] %s" % (thread_id, file_name), url_item.url, fpath, bar, app_cfg)
+            err = download_file("[%d] %s" % (thread_id, file_name), url_item.url, tmp_fpath, bar, app_cfg)
             lock.acquire()
             TOTAL_DOWNLOADED += 1
             if (err == ERR_NONE):
@@ -259,6 +268,11 @@ def download_thread(thread_id, lock, app_cfg, bar):
             else:
                 log_msg = "[%d] Error : %s : %s" % (TOTAL_DOWNLOADED, err_msg(err), str(url_item))
             lock.release()
+            if (err == ERR_NONE):
+                os.rename(tmp_fpath, fpath)
+            else:
+                if (os.path.exists(tmp_fpath)):
+                    os.remove(tmp_fpath)
         else:
             # logger.error("FAILED to get file path for URL '%s', file name '%s'" % (url_item.url, url_item.fname))
             lock.acquire()
@@ -346,7 +360,7 @@ def main(args):
         os.makedirs(outdir)
       
 
-    logger.info("Output dir '%s'" % args.outdir)
+    logger.info("Output dir '%s'" % outdir)
     LOG_FILE=os.path.join(outdir, LOG_FNAME)
     logger.debug("List of url: \n" + "\n".join(str(url) for url in LIST_URLS))
     
